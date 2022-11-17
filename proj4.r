@@ -22,10 +22,10 @@
 
 
 # The newt function is to implement Newton’s method for minimization of functions.
-# The input of the function is as follows：
+# The input of the function is as follows�?
 # (1) theta: a vector of initial values for the guesstimate
 # (2) func: the objective function to minimize. Its first argument is the vector of guesstimate. 
-#     Remaining arguments will be passed from newt using ‘...’.
+#     Remaining arguments will be passed from newt using �?...�?.
 # (3) grad: the gradient function. It has the same arguments as func but returns the gradient vector of the
 #     objective w.r.t. the elements of parameter vector.
 # (4) hess: the Hessian matrix function.  It has the same arguments as func but returns the Hessian matrix of the 
@@ -89,4 +89,74 @@ newt = function(theta,func,grad,hess=NULL,...,tol=1e-8,fscale=1,maxit=100,max.ha
     #if the Hessian matrix is provided, we can use it directly
     else{ 
       hs = hess(x,...)
+    }
+    
+    # Calculate the inverse matrix
+    # first, set an NA matrix, which has same number of rows and columns 
+    if(length(x) > 1){
+      solve_hess = matrix(nrow=nrow(hs),ncol = ncol(hs))
+      # if the row number of hessian matrix is larger than 2
+      if(nrow(hs) > 2){
+        # In the inverse matrix, the value of the j-th row and i-th column element is equal to, after deleting the i-th row and j-column
+        # in the original matrix, the determinant of the remaining part and multiply it by (-1)^(i+j)�?
+        # then divide by the determinant of the original matrix
+        for (i in 1:nrow(hs)){
+          for (j in 1:ncol(hs)){
+            solve_hess[j,i] = (-1)^(i+j)*det(hs[-i,-j])
+          }
+        }
+        solve_hess = 1/det(hs) *solve_hess  # divide by the determinant of the original matrix
+      }
+      # if the row number of hessian matrix is not larger than 2
+      else{
+        # In the inverse matrix, the value of the j-th row and i-th column element is equal to, after deleting the i-th row and j-column
+        # in the original matrix, the the remaining part and multiply it by (-1)^(i+j)�?
+        # then divide by the determinant of the original matrix
+        for(i in 1:nrow(hs)){
+          for(j in 1:ncol(hs)){
+            solve_hess[j,i] = (-1)^(i+j)*hs[-i,-j]
+          }
+        }
+      }
+      solve_hess = 1/det(hs)*solve_hess  # divide by the determinant of the original matrix
+    }
+    else{
+      solve_hess = 1/x
+    }
+    # this step is to test whether hessian matrix is positive definiteness by checking that the eigenvalues are all positive.
+    # do eigen-decomposition of hessian matrix and extra eigen values
+    hs_eigen = eigen(hs)$values
+    # set a logical variable to indicate whether matrix is positive definiteness
+    positive = TRUE
+    # checking whether each eigenvalues is positive.
+    for (i in 1:length(hs_eigen)){
+      # Once there is an eigenvalue not less than 0, positive becomes FALSE，which mean this matrix is not positive definiteness  
+      # and jump out of the loop
+      if(hs_eigen[i] < 0){
+        positive = FALSE
+        break
+      }
+    }
+    
+    # this step is to judging whether θ[k] is a minimum by seeing whether all elements of the gradient vector have absolute value less than tol
+    # times the absolute value of the objective function plus fscale. 
+    # the corresponding function is ||D(θ[k]) || <  tol *(|f(θ[k]) |+fscale)
+    # calculate ||D(θ[k]) ||, which is the sum of absolute value of all elements of the gradient vector
+    sum = 0
+    for (i in 1:length(g)){
+      sum = abs(g[i]) + sum
+    }
+    
+    # if  all elements of the gradient vector have absolute value less than tol times the absolute value of the objective function plus fscale. 
+    if (sum < tol*(abs(func(x,...)) + fscale)){
+      # judge whether the hessian matrix at θ[k] is positive definiteness
+      # If the Hessian is not positive definite at convergence
+      if (positive == FALSE){
+        # then will give a warning that "The hess matrix isn't positive definite at convergence."
+        warning("The hess matrix isn't positive definite at convergence.")
+      }
+      # if (1)all elements of the gradient vector have absolute value less than tol times the absolute value of the objective function plus fscale.
+      # (2) the Hessian is not positive definite at convergence
+      # then we can conclude that θ[k] is a minimum and break out of the loop
+      break
     }
