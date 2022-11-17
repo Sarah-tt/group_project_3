@@ -22,10 +22,10 @@
 
 
 # The newt function is to implement Newton’s method for minimization of functions.
-# The input of the function is as follows�?
+# The input of the function is as follows???
 # (1) theta: a vector of initial values for the guesstimate
 # (2) func: the objective function to minimize. Its first argument is the vector of guesstimate. 
-#     Remaining arguments will be passed from newt using �?...�?.
+#     Remaining arguments will be passed from newt using ???...???.
 # (3) grad: the gradient function. It has the same arguments as func but returns the gradient vector of the
 #     objective w.r.t. the elements of parameter vector.
 # (4) hess: the Hessian matrix function.  It has the same arguments as func but returns the Hessian matrix of the 
@@ -98,7 +98,7 @@ newt = function(theta,func,grad,hess=NULL,...,tol=1e-8,fscale=1,maxit=100,max.ha
       # if the row number of hessian matrix is larger than 2
       if(nrow(hs) > 2){
         # In the inverse matrix, the value of the j-th row and i-th column element is equal to, after deleting the i-th row and j-column
-        # in the original matrix, the determinant of the remaining part and multiply it by (-1)^(i+j)�?
+        # in the original matrix, the determinant of the remaining part and multiply it by (-1)^(i+j)???
         # then divide by the determinant of the original matrix
         for (i in 1:nrow(hs)){
           for (j in 1:ncol(hs)){
@@ -110,7 +110,7 @@ newt = function(theta,func,grad,hess=NULL,...,tol=1e-8,fscale=1,maxit=100,max.ha
       # if the row number of hessian matrix is not larger than 2
       else{
         # In the inverse matrix, the value of the j-th row and i-th column element is equal to, after deleting the i-th row and j-column
-        # in the original matrix, the the remaining part and multiply it by (-1)^(i+j)�?
+        # in the original matrix, the the remaining part and multiply it by (-1)^(i+j)???
         # then divide by the determinant of the original matrix
         for(i in 1:nrow(hs)){
           for(j in 1:ncol(hs)){
@@ -160,3 +160,99 @@ newt = function(theta,func,grad,hess=NULL,...,tol=1e-8,fscale=1,maxit=100,max.ha
       # then we can conclude that θ[k] is a minimum and break out of the loop
       break
     }
+    
+    # if  all elements of the gradient vector have absolute value is not less than tol times the absolute value of the objective function plus fscale，
+    # which mean we did not find the minimum theta, then we need to perform a series of operations.
+    
+    # first, if hessian matrix is not positive definite we need to perturb it to be. 
+    # The approach is to add a multiple of the identity matrix to it,large enough to force positive definiteness(tested by eigen decomposition)
+    # create an identity matrix
+    I = diag(rep(1),nrow(hs))
+    # set a small multiple 
+    m = 1e-6
+    # If hessian matrix is not positive definite
+    while (positive == FALSE){
+      # add a multiple of the identity matrix to it, do eigen decomposition to deformed matrix and extra the corresponding eigen value
+      hs_new = eigen(hs + m*I)$values
+      # every time after add a multiple of the identity matrix to it, we need to check whether the new matrix is positive definite
+      # by checking whether the eigenvalues are all positive.
+      for (i in 1:length(hs_new)){
+        # if there exists an eigenvalues is negative 
+        if(hs_new[i] < 0){
+          # then the deformed matrix is still Non-positive definite
+          positive = FALSE
+          # Expand the multiple, break the loop and move on to the next perturbing
+          m = m*10
+          break
+        }
+        # if eigenvalues are all positive, then the hessian matrix after perturbing has become positive definite
+        else{
+          positive = TRUE
+        }
+      }
+    }
+    
+    
+    #calculate descent direction
+    d = -solve_hess %*% g
+    
+    
+    # this step is to avoid any possibility of divergence by checking that each new proposal for theta has actually reduced D
+    # the corresponding function is D(θ + d) < D(θ).
+    # If D(θ + d) < D(θ) is not true, repeatedly halve ∆ until D(θ + d) < D(θ).
+    
+    #if D(θ + d) < D(θ), it means ∆ is a descent direction
+    if (func((x+d),...) == Inf | func((x+d),...) == -Inf)
+      stop("The function has no domain at the current value.")
+    else{
+      if(func((x+d),...) < func(x,...)){
+        #set up new vector of optimization parameters to θ + d, and use it for next iteration
+        x_new = x + d
+        #increment the number of iterations by 1
+        n = n + 1
+      }
+      #if D(θ + d) < D(θ) is not true, repeatedly halve ∆ until D(θ +d∆) < D(θ)
+      else{
+        #we can try max.half times at most before giving up
+        for(j in 1:max.half){
+          #halve d
+          d = d/2
+          #check whether D(θ + d) < D(θ) after halving d
+          if (func((x+d),...) == Inf | func((x+d),...) == -Inf)
+            stop("The function has no domain at the current value.")
+          else{
+            if(func((x+d),...) < func(x,...)){
+              x_new = x + d
+              n = n +1
+              break
+            }
+          }
+        }
+      }
+    }
+    #if we can not reach D(θ + d) < D(θ) after halving d max.half times
+    #the function should issue error
+    if(func((x+d),...) >= func(x,...)){
+      stop("The step fails to reduce the objective despite trying max.half step halving.")
+    }
+    #update vector of optimization parameters for next iteration
+    x = x_new
+  }
+  
+  #if after iterate maxit times, we can not get guesstimate which make objective function minimum
+  #the function will issue error
+  #convergence should be judged by seeing whether all elements of the gradient vector have absolute value 
+  #less than tol times the absolute value of the objective function plus fscale
+  if (sum >= tol*(abs(func(x,...)) + fscale)){
+    stop("maxit is reached without convergence.")
+  }
+  
+  f = func(x,...)
+  theta = x
+  iter = n
+  g = grad(x,...)
+  Hi = solve_hess
+  return_list = list(f,theta,iter,g,Hi)
+  return(return_list)
+}
+
